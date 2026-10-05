@@ -70,6 +70,14 @@ IF @tableExport == "csv" AND EMPTY(@configError) THEN
   SET @skipTableLoad = "1"
   SET @skipChartLoad = "1"
 ENDIF
+SET @previewSafe = Trim(RequestParameter("previewSafe"))
+IF EMPTY(@previewSafe) THEN
+  SET @previewSafe = Trim(QueryParameter("previewSafe"))
+ENDIF
+IF @previewSafe == "1" THEN
+  SET @skipTableLoad = "1"
+  SET @skipChartLoad = "1"
+ENDIF
 
 ]%%
 <script runat="server">
@@ -184,15 +192,6 @@ function loadDashboardConfig() {
 }
 
 try {
-  loadDashboardConfig();
-
-  var addContactAction = String(Request.GetFormField("do") || Request.GetQueryStringParameter("do") || "");
-  var addContactId = String(Request.GetFormField("contactId") || Request.GetQueryStringParameter("contactId") || "");
-  var addContactConfigError = String(Variable.GetValue("@configError") || "");
-  var addContactArticleUrl = String(Variable.GetValue("@articlePreviewUrl") || "");
-  if (addContactAction === "addContact" && addContactId && !addContactConfigError && addContactArticleUrl) {
-    Platform.Function.Redirect(addContactArticleUrl + "?subscriberKey=" + addContactId);
-  }
 
 function trimValue(value) {
   return String(value == null ? "" : value).replace(/^\s+|\s+$/g, "");
@@ -366,6 +365,40 @@ function formatRateLabel(numerator, denominator) {
     return "0.0% Open Rate";
   }
   return ((numerator / denominator) * 100).toFixed(1) + "% Open Rate";
+}
+
+function detectContentBuilderPreview() {
+  try {
+    var refUrl = String(Request.GetReferrerURL() || "").toLowerCase();
+    var reqUrl = String(Request.GetRequestURL() || "").toLowerCase();
+    if (
+      refUrl.indexOf("contentbuilder") >= 0 ||
+      refUrl.indexOf("cloudpages/preview") >= 0 ||
+      refUrl.indexOf("assetedit") >= 0 ||
+      reqUrl.indexOf("/preview") >= 0
+    ) {
+      return true;
+    }
+  } catch (previewDetectErr) {}
+  return String(Request.GetQueryStringParameter("previewSafe") || "") === "1";
+}
+
+loadDashboardConfig();
+
+var addContactAction = String(Request.GetFormField("do") || Request.GetQueryStringParameter("do") || "");
+var addContactId = String(Request.GetFormField("contactId") || Request.GetQueryStringParameter("contactId") || "");
+var addContactConfigError = String(Variable.GetValue("@configError") || "");
+var addContactArticleUrl = String(Variable.GetValue("@articlePreviewUrl") || "");
+if (addContactAction === "addContact" && addContactId && !addContactConfigError && addContactArticleUrl) {
+  try {
+    Platform.Function.Redirect(addContactArticleUrl + "?subscriberKey=" + addContactId);
+  } catch (redirectErr) {}
+}
+
+if (detectContentBuilderPreview()) {
+  Variable.SetValue("@skipTableLoad", "1");
+  Variable.SetValue("@skipChartLoad", "1");
+  Variable.SetValue("@chartRefreshWarning", "Preview mode: table and chart DE queries were skipped. Open the published CloudPage URL for full data.");
 }
 
 var skipTableLoad = String(Variable.GetValue("@skipTableLoad") || "") === "1";
@@ -1121,7 +1154,11 @@ Variable.SetValue("@chartSpecialtyRows", chartSpecialtyRows);
 Variable.SetValue("@chartHourRows", chartHourRows);
 
 } catch (pageErr) {
-  setPageDefaults(String(pageErr));
+  var pageErrMsg = String(pageErr);
+  setPageDefaults(pageErrMsg);
+  try {
+    Write('<div style="padding:16px;margin:16px;color:#721c24;background:#f8d7da;border:2px solid #721c24;font-family:sans-serif;"><strong>Page load error</strong><br>' + pageErrMsg.replace(/</g, "&lt;") + "</div>");
+  } catch (writeErr) {}
 }
 </script>
 %%[

@@ -1,0 +1,27 @@
+%%[
+SET @diagOk = "1"
+SET @diagBu = "PROD"
+]%%
+<script runat="server">
+Platform.Load("core", "1");
+Write("<!DOCTYPE html><html><head><meta charset=\"UTF-8\"><title>Push Advice diagnostic</title></head><body style=\"font-family:sans-serif;padding:20px;\">");
+Write("<h1>CloudPage diagnostic</h1>");
+Write("<p>SSJS executed successfully.</p>");
+try {
+  var rows = Platform.Function.LookupRows("SFMC_SS_DASHBOARD", ["Environment"], ["PROD"]);
+  var count = rows && rows.length ? rows.length : 0;
+  Write("<p>SFMC_SS_DASHBOARD lookup: " + count + " row(s) for Environment=PROD.</p>");
+} catch (deErr) {
+  Write("<p style=\"color:#721c24;\">SFMC_SS_DASHBOARD lookup failed: " + String(deErr).replace(/</g, "&lt;") + "</p>");
+}
+try {
+  var de = DataExtension.Init("PA_Server_Side_Engagement");
+  Write("<p>PA_Server_Side_Engagement: " + (de ? "found" : "not found") + "</p>");
+} catch (engErr) {
+  Write("<p style=\"color:#721c24;\">PA_Server_Side_Engagement init failed: " + String(engErr).replace(/</g, "&lt;") + "</p>");
+}
+Write("</body></html>");
+</script>
+%%[ IF 1 == 0 THEN ]%%
+<p>AMP: %%=v(@diagOk)=%% BU: %%=v(@diagBu)=%%</p>
+%%[ ENDIF ]%%
