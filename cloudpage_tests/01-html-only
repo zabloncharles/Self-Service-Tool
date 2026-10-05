@@ -1,0 +1,12 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>CloudPage test 1 — HTML only</title>
+</head>
+<body style="font-family:sans-serif;padding:24px;">
+  <h1>Test 1: HTML only</h1>
+  <p>If preview fails on this page, the problem is not AMPscript or SSJS.</p>
+  <p>Check: CloudPages collection, site publish, and that this asset is a CloudPage web page (not an email).</p>
+</body>
+</html>

@@ -1,0 +1,14 @@
+<script runat="server">
+try {
+  Platform.Load("Core", "1");
+  Write('<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>CloudPage test 3</title></head><body style="font-family:sans-serif;padding:24px;">');
+  Write("<h1>Test 3: SSJS only</h1>");
+  Write("<p>SSJS and Platform.Load succeeded.</p>");
+  Write("</body></html>");
+} catch (e) {
+  Write('<!DOCTYPE html><html><body style="font-family:sans-serif;padding:24px;color:#721c24;">');
+  Write("<h1>Test 3: SSJS error</h1>");
+  Write("<pre>" + String(e).replace(/</g, "&lt;") + "</pre>");
+  Write("</body></html>");
+}
+</script>
