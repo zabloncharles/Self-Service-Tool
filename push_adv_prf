@@ -28,35 +28,14 @@ SET @automationId = ""
 SET @syncAutomationId = ""
 SET @homeUrl = ""
 SET @switchEnvironment = ""
-Set @env = Lookup("SFMC_SS_DASHBOARD", "Environment", "Environment", "PROD")
-
-IF @env == "UAT" THEN
- SET @BU = "UAT"
-ELSE
- SET @BU = "PROD"
+SET @envOverride = Trim(RequestParameter("env"))
+IF EMPTY(@envOverride) THEN
+  SET @envOverride = Trim(QueryParameter("env"))
 ENDIF
-
-SET @row = LookupRows("SFMC_SS_DASHBOARD", "Environment", @BU)
-
-IF RowCount(@row) > 0 THEN
-  SET @firstRow = Row(@row, 1)
-  SET @emailPreviewUrl = IIF(NOT EMPTY(Field(@firstRow, "Email_Preview_Code")), Field(@firstRow, "Email_Preview_Code"), "")
-  SET @articlePreviewUrl = IIF(NOT EMPTY(Field(@firstRow, "Article_Preview_Code")), Field(@firstRow, "Article_Preview_Code"), "")
-  SET @automationId = IIF(NOT EMPTY(Field(@firstRow, "Automation_GUID")), Field(@firstRow, "Automation_GUID"), "")
-  SET @syncAutomationId = IIF(NOT EMPTY(Field(@firstRow, "SyncAutomationId")), Field(@firstRow, "SyncAutomationId"), "")
-  SET @homeUrl = IIF(NOT EMPTY(Field(@firstRow, "Home_URL")), Field(@firstRow, "Home_URL"), "")
-  SET @switchEnvironment = IIF(NOT EMPTY(Field(@firstRow, "EnvironmentSwitchUrl")), Field(@firstRow, "EnvironmentSwitchUrl"), "")
-  
-  IF EMPTY(@emailPreviewUrl) OR EMPTY(@articlePreviewUrl) OR EMPTY(@automationId) THEN
-    SET @configError = "Configuration error: missing required values in SFMC_SS_DASHBOARD."
-  ENDIF
-ELSE
-  SET @configError = Concat("Configuration error: no row found in SFMC_SS_DASHBOARD for Environment=", @BU)
-ENDIF
-
-IF RequestParameter("do") == "addContact" AND NOT EMPTY(RequestParameter("contactId")) AND EMPTY(@configError) THEN
-  SET @contactIdToAdd = RequestParameter("contactId")
-  Redirect(Concat(@articlePreviewUrl, "?subscriberKey=", @contactIdToAdd))
+IF @envOverride == "UAT" THEN
+  SET @BU = "UAT"
+ELSEIF @envOverride == "PROD" THEN
+  SET @BU = "PROD"
 ENDIF
 
 SET @contactUiPage = Trim(RequestParameter("contactPage"))
@@ -140,7 +119,80 @@ function setPageDefaults(errMsg) {
   Variable.SetValue("@chartHourRows", "0");
 }
 
+function dashboardRowVal(row, fieldName) {
+  if (!row || !fieldName) {
+    return "";
+  }
+  try {
+    if (row[fieldName] != null && String(row[fieldName]) !== "") {
+      return String(row[fieldName]);
+    }
+  } catch (ignoreField) {}
+  return "";
+}
+
+function loadDashboardConfig() {
+  var bu = String(Variable.GetValue("@BU") || "PROD");
+  var configError = "";
+  var emailPreviewUrl = "";
+  var articlePreviewUrl = "";
+  var automationId = "";
+  var syncAutomationId = "";
+  var homeUrl = "";
+  var switchEnvironment = "";
+
+  try {
+    var envProbe = Platform.Function.LookupRows("SFMC_SS_DASHBOARD", ["Environment"], ["PROD"]);
+    if (envProbe && envProbe.length > 0) {
+      var envFromDe = dashboardRowVal(envProbe[0], "Environment");
+      if (envFromDe === "UAT") {
+        bu = "UAT";
+      } else if (envFromDe === "PROD") {
+        bu = "PROD";
+      }
+    }
+  } catch (envErr) {}
+
+  try {
+    var configRows = Platform.Function.LookupRows("SFMC_SS_DASHBOARD", ["Environment"], [bu]);
+    if (!configRows || configRows.length === 0) {
+      configError = "Configuration error: no row found in SFMC_SS_DASHBOARD for Environment=" + bu + ".";
+    } else {
+      var configRow = configRows[0];
+      emailPreviewUrl = dashboardRowVal(configRow, "Email_Preview_Code");
+      articlePreviewUrl = dashboardRowVal(configRow, "Article_Preview_Code");
+      automationId = dashboardRowVal(configRow, "Automation_GUID");
+      syncAutomationId = dashboardRowVal(configRow, "SyncAutomationId");
+      homeUrl = dashboardRowVal(configRow, "Home_URL");
+      switchEnvironment = dashboardRowVal(configRow, "EnvironmentSwitchUrl");
+      if (!emailPreviewUrl || !articlePreviewUrl || !automationId) {
+        configError = "Configuration error: missing required values in SFMC_SS_DASHBOARD.";
+      }
+    }
+  } catch (configErr) {
+    configError = "Configuration error: unable to read SFMC_SS_DASHBOARD. " + String(configErr);
+  }
+
+  Variable.SetValue("@BU", bu);
+  Variable.SetValue("@configError", configError);
+  Variable.SetValue("@emailPreviewUrl", emailPreviewUrl);
+  Variable.SetValue("@articlePreviewUrl", articlePreviewUrl);
+  Variable.SetValue("@automationId", automationId);
+  Variable.SetValue("@syncAutomationId", syncAutomationId);
+  Variable.SetValue("@homeUrl", homeUrl);
+  Variable.SetValue("@switchEnvironment", switchEnvironment);
+}
+
 try {
+  loadDashboardConfig();
+
+  var addContactAction = String(Request.GetFormField("do") || Request.GetQueryStringParameter("do") || "");
+  var addContactId = String(Request.GetFormField("contactId") || Request.GetQueryStringParameter("contactId") || "");
+  var addContactConfigError = String(Variable.GetValue("@configError") || "");
+  var addContactArticleUrl = String(Variable.GetValue("@articlePreviewUrl") || "");
+  if (addContactAction === "addContact" && addContactId && !addContactConfigError && addContactArticleUrl) {
+    Platform.Function.Redirect(addContactArticleUrl + "?subscriberKey=" + addContactId);
+  }
 
 function trimValue(value) {
   return String(value == null ? "" : value).replace(/^\s+|\s+$/g, "");
