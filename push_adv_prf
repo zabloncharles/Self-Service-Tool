@@ -90,9 +90,101 @@ SET @runCsvExport = "false"
 IF @tableExport == "csv" AND EMPTY(@configError) THEN
   SET @skipTableLoad = "1"
   SET @skipChartLoad = "1"
+  SET @runCsvExport = "true"
 ENDIF
-
+IF @runCsvExport == "true" THEN
+  VAR @exportPageNum, @exportMaxPage, @exportBatchRows, @exportRowIdx, @exportRow, @exportDePageKey, @exportMaxPageRows, @exportMaxPageNum, @exportLine, @exportCell, @exportContactId, @exportEmailHistory, @exportCourseHistory, @exportLastSent
+  ResponseContentType("text/csv")
+  SET @exportMaxPage = 1
+  SET @exportMaxPageRows = LookupOrderedRows("PA_Server_Side_Engagement", 1, "PageNumber DESC", "Source", "Push Advice", "validated", "Yes")
+  IF RowCount(@exportMaxPageRows) == 0 THEN
+    SET @exportMaxPageRows = LookupOrderedRows("PA_Server_Side_Engagement", 1, "PageNumber DESC", "Source", "Push Advice")
+  ENDIF
+  IF RowCount(@exportMaxPageRows) > 0 THEN
+    SET @exportMaxPageNum = Field(Row(@exportMaxPageRows, 1), "TotalPages")
+    IF NOT EMPTY(@exportMaxPageNum) THEN
+      SET @exportMaxPageNum = Add(0, @exportMaxPageNum)
+      IF @exportMaxPageNum > 0 THEN
+        SET @exportMaxPage = @exportMaxPageNum
+      ENDIF
+    ELSE
+      SET @exportMaxPageNum = Field(Row(@exportMaxPageRows, 1), "PageNumber")
+      IF NOT EMPTY(@exportMaxPageNum) THEN
+        SET @exportMaxPageNum = Add(0, @exportMaxPageNum)
+        IF @exportMaxPageNum > 0 THEN
+          SET @exportMaxPage = @exportMaxPageNum
+        ENDIF
+      ENDIF
+    ENDIF
+  ENDIF
+  SET @exportLine = "Contact_Id,Email,LastSent,Engagement,Primary_Specialty,Related_Account_Primary_State,JobID,Related_Account_Name,First_Name,Last_Name,Designation,Role,Mobile,Auth0UserId,OpenDate,view_email_url,emailHistory,courseHistory"
+]%%%%=Concat(@exportLine, Char(10))=%%%%[
+  FOR @exportPageNum = 1 TO @exportMaxPage DO
+    SET @exportDePageKey = Concat("", @exportPageNum)
+    SET @exportBatchRows = LookupRows("PA_Server_Side_Engagement", "Source", "Push Advice", "validated", "Yes", "PageNumber", @exportDePageKey)
+    IF RowCount(@exportBatchRows) == 0 THEN
+      SET @exportBatchRows = LookupRows("PA_Server_Side_Engagement", "Source", "Push Advice", "validated", "Yes", "PageNumber", @exportPageNum)
+    ENDIF
+    IF RowCount(@exportBatchRows) == 0 AND @exportPageNum == 1 THEN
+      SET @exportBatchRows = LookupRows("PA_Server_Side_Engagement", "Source", "Push Advice", "validated", "Yes")
+      SET @exportMaxPage = 1
+    ENDIF
+    FOR @exportRowIdx = 1 TO RowCount(@exportBatchRows) DO
+      SET @exportRow = Row(@exportBatchRows, @exportRowIdx)
+      SET @exportContactId = Field(@exportRow, "Contact_Id")
+      SET @exportLastSent = Field(@exportRow, "LastSent")
+      IF EMPTY(@exportLastSent) THEN
+        SET @exportLastSent = Field(@exportRow, "OpenDate")
+      ENDIF
+      SET @exportEmailHistory = ""
+      SET @exportCourseHistory = ""
+      IF NOT EMPTY(@exportContactId) AND NOT EMPTY(@emailPreviewUrl) THEN
+        SET @exportEmailHistory = Concat(@emailPreviewUrl, "?subscriberKey=", @exportContactId)
+      ENDIF
+      IF NOT EMPTY(@exportContactId) AND NOT EMPTY(@articlePreviewUrl) THEN
+        SET @exportCourseHistory = Concat(@articlePreviewUrl, "?subscriberKey=", @exportContactId)
+      ENDIF
+      SET @exportLine = Concat('"', Replace(Field(@exportRow, "Contact_Id"), '"', '""'), '"')
+      SET @exportCell = Concat('"', Replace(Field(@exportRow, "Email"), '"', '""'), '"')
+      SET @exportLine = Concat(@exportLine, ",", @exportCell)
+      SET @exportCell = Concat('"', Replace(@exportLastSent, '"', '""'), '"')
+      SET @exportLine = Concat(@exportLine, ",", @exportCell)
+      SET @exportCell = Concat('"', Replace(Field(@exportRow, "Engagement"), '"', '""'), '"')
+      SET @exportLine = Concat(@exportLine, ",", @exportCell)
+      SET @exportCell = Concat('"', Replace(Field(@exportRow, "Primary_Specialty"), '"', '""'), '"')
+      SET @exportLine = Concat(@exportLine, ",", @exportCell)
+      SET @exportCell = Concat('"', Replace(Field(@exportRow, "Related_Account_Primary_State"), '"', '""'), '"')
+      SET @exportLine = Concat(@exportLine, ",", @exportCell)
+      SET @exportCell = Concat('"', Replace(Field(@exportRow, "JobID"), '"', '""'), '"')
+      SET @exportLine = Concat(@exportLine, ",", @exportCell)
+      SET @exportCell = Concat('"', Replace(Field(@exportRow, "Related_Account_Name"), '"', '""'), '"')
+      SET @exportLine = Concat(@exportLine, ",", @exportCell)
+      SET @exportCell = Concat('"', Replace(Field(@exportRow, "First_Name"), '"', '""'), '"')
+      SET @exportLine = Concat(@exportLine, ",", @exportCell)
+      SET @exportCell = Concat('"', Replace(Field(@exportRow, "Last_Name"), '"', '""'), '"')
+      SET @exportLine = Concat(@exportLine, ",", @exportCell)
+      SET @exportCell = Concat('"', Replace(Field(@exportRow, "Designation"), '"', '""'), '"')
+      SET @exportLine = Concat(@exportLine, ",", @exportCell)
+      SET @exportCell = Concat('"', Replace(Field(@exportRow, "Role"), '"', '""'), '"')
+      SET @exportLine = Concat(@exportLine, ",", @exportCell)
+      SET @exportCell = Concat('"', Replace(Field(@exportRow, "Mobile"), '"', '""'), '"')
+      SET @exportLine = Concat(@exportLine, ",", @exportCell)
+      SET @exportCell = Concat('"', Replace(Field(@exportRow, "Auth0UserId"), '"', '""'), '"')
+      SET @exportLine = Concat(@exportLine, ",", @exportCell)
+      SET @exportCell = Concat('"', Replace(Field(@exportRow, "OpenDate"), '"', '""'), '"')
+      SET @exportLine = Concat(@exportLine, ",", @exportCell)
+      SET @exportCell = Concat('"', Replace(Field(@exportRow, "view_email_url"), '"', '""'), '"')
+      SET @exportLine = Concat(@exportLine, ",", @exportCell)
+      SET @exportCell = Concat('"', Replace(@exportEmailHistory, '"', '""'), '"')
+      SET @exportLine = Concat(@exportLine, ",", @exportCell)
+      SET @exportCell = Concat('"', Replace(@exportCourseHistory, '"', '""'), '"')
+      SET @exportLine = Concat(@exportLine, ",", @exportCell)
+]%%%%=Concat(@exportLine, Char(10))=%%%%[
+    NEXT @exportRowIdx
+  NEXT @exportPageNum
+ENDIF
 ]%%
+%%[ IF @runCsvExport != "true" THEN ]%%
 <script runat="server">
 Platform.Load("core", "1");
 
@@ -1864,104 +1956,7 @@ SET @specialtyTotalDataEnc = URLEncode(@specialtyTotalData, 1, 1)
 SET @openedSendHourCountsEnc = URLEncode(@openedSendHourCounts, 1, 1)
 SET @responsesDataEnc = URLEncode(@responsesData, 1, 1)
 
-IF @tableExport == "csv" AND EMPTY(@configError) THEN
-  SET @runCsvExport = "true"
-ENDIF
-IF @runCsvExport == "true" THEN
-  VAR @exportPageNum, @exportMaxPage, @exportBatchRows, @exportRowIdx, @exportRow, @exportDePageKey, @exportMaxPageRows, @exportMaxPageNum, @exportLine, @exportCell, @exportContactId, @exportEmailHistory, @exportCourseHistory, @exportLastSent
-  ResponseContentType("text/csv")
-  SET @exportMaxPage = 1
-  SET @exportMaxPageRows = LookupOrderedRows("PA_Server_Side_Engagement", 1, "PageNumber DESC", "Source", "Push Advice", "validated", "Yes")
-  IF RowCount(@exportMaxPageRows) == 0 THEN
-    SET @exportMaxPageRows = LookupOrderedRows("PA_Server_Side_Engagement", 1, "PageNumber DESC", "Source", "Push Advice")
-  ENDIF
-  IF RowCount(@exportMaxPageRows) > 0 THEN
-    SET @exportMaxPageNum = Field(Row(@exportMaxPageRows, 1), "TotalPages")
-    IF NOT EMPTY(@exportMaxPageNum) THEN
-      SET @exportMaxPageNum = Add(0, @exportMaxPageNum)
-      IF @exportMaxPageNum > 0 THEN
-        SET @exportMaxPage = @exportMaxPageNum
-      ENDIF
-    ELSE
-      SET @exportMaxPageNum = Field(Row(@exportMaxPageRows, 1), "PageNumber")
-      IF NOT EMPTY(@exportMaxPageNum) THEN
-        SET @exportMaxPageNum = Add(0, @exportMaxPageNum)
-        IF @exportMaxPageNum > 0 THEN
-          SET @exportMaxPage = @exportMaxPageNum
-        ENDIF
-      ENDIF
-    ENDIF
-  ENDIF
-  SET @exportLine = "Contact_Id,Email,LastSent,Engagement,Primary_Specialty,Related_Account_Primary_State,JobID,Related_Account_Name,First_Name,Last_Name,Designation,Role,Mobile,Auth0UserId,OpenDate,view_email_url,emailHistory,courseHistory"
-]%%%%=Concat(@exportLine, Char(10))=%%%%[
-  FOR @exportPageNum = 1 TO @exportMaxPage DO
-    SET @exportDePageKey = Concat("", @exportPageNum)
-    SET @exportBatchRows = LookupRows("PA_Server_Side_Engagement", "Source", "Push Advice", "validated", "Yes", "PageNumber", @exportDePageKey)
-    IF RowCount(@exportBatchRows) == 0 THEN
-      SET @exportBatchRows = LookupRows("PA_Server_Side_Engagement", "Source", "Push Advice", "validated", "Yes", "PageNumber", @exportPageNum)
-    ENDIF
-    IF RowCount(@exportBatchRows) == 0 AND @exportPageNum == 1 THEN
-      SET @exportBatchRows = LookupRows("PA_Server_Side_Engagement", "Source", "Push Advice", "validated", "Yes")
-      SET @exportMaxPage = 1
-    ENDIF
-    FOR @exportRowIdx = 1 TO RowCount(@exportBatchRows) DO
-      SET @exportRow = Row(@exportBatchRows, @exportRowIdx)
-      SET @exportContactId = Field(@exportRow, "Contact_Id")
-      SET @exportLastSent = Field(@exportRow, "LastSent")
-      IF EMPTY(@exportLastSent) THEN
-        SET @exportLastSent = Field(@exportRow, "OpenDate")
-      ENDIF
-      SET @exportEmailHistory = ""
-      SET @exportCourseHistory = ""
-      IF NOT EMPTY(@exportContactId) AND NOT EMPTY(@emailPreviewUrl) THEN
-        SET @exportEmailHistory = Concat(@emailPreviewUrl, "?subscriberKey=", @exportContactId)
-      ENDIF
-      IF NOT EMPTY(@exportContactId) AND NOT EMPTY(@articlePreviewUrl) THEN
-        SET @exportCourseHistory = Concat(@articlePreviewUrl, "?subscriberKey=", @exportContactId)
-      ENDIF
-      SET @exportLine = Concat('"', Replace(Field(@exportRow, "Contact_Id"), '"', '""'), '"')
-      SET @exportCell = Concat('"', Replace(Field(@exportRow, "Email"), '"', '""'), '"')
-      SET @exportLine = Concat(@exportLine, ",", @exportCell)
-      SET @exportCell = Concat('"', Replace(@exportLastSent, '"', '""'), '"')
-      SET @exportLine = Concat(@exportLine, ",", @exportCell)
-      SET @exportCell = Concat('"', Replace(Field(@exportRow, "Engagement"), '"', '""'), '"')
-      SET @exportLine = Concat(@exportLine, ",", @exportCell)
-      SET @exportCell = Concat('"', Replace(Field(@exportRow, "Primary_Specialty"), '"', '""'), '"')
-      SET @exportLine = Concat(@exportLine, ",", @exportCell)
-      SET @exportCell = Concat('"', Replace(Field(@exportRow, "Related_Account_Primary_State"), '"', '""'), '"')
-      SET @exportLine = Concat(@exportLine, ",", @exportCell)
-      SET @exportCell = Concat('"', Replace(Field(@exportRow, "JobID"), '"', '""'), '"')
-      SET @exportLine = Concat(@exportLine, ",", @exportCell)
-      SET @exportCell = Concat('"', Replace(Field(@exportRow, "Related_Account_Name"), '"', '""'), '"')
-      SET @exportLine = Concat(@exportLine, ",", @exportCell)
-      SET @exportCell = Concat('"', Replace(Field(@exportRow, "First_Name"), '"', '""'), '"')
-      SET @exportLine = Concat(@exportLine, ",", @exportCell)
-      SET @exportCell = Concat('"', Replace(Field(@exportRow, "Last_Name"), '"', '""'), '"')
-      SET @exportLine = Concat(@exportLine, ",", @exportCell)
-      SET @exportCell = Concat('"', Replace(Field(@exportRow, "Designation"), '"', '""'), '"')
-      SET @exportLine = Concat(@exportLine, ",", @exportCell)
-      SET @exportCell = Concat('"', Replace(Field(@exportRow, "Role"), '"', '""'), '"')
-      SET @exportLine = Concat(@exportLine, ",", @exportCell)
-      SET @exportCell = Concat('"', Replace(Field(@exportRow, "Mobile"), '"', '""'), '"')
-      SET @exportLine = Concat(@exportLine, ",", @exportCell)
-      SET @exportCell = Concat('"', Replace(Field(@exportRow, "Auth0UserId"), '"', '""'), '"')
-      SET @exportLine = Concat(@exportLine, ",", @exportCell)
-      SET @exportCell = Concat('"', Replace(Field(@exportRow, "OpenDate"), '"', '""'), '"')
-      SET @exportLine = Concat(@exportLine, ",", @exportCell)
-      SET @exportCell = Concat('"', Replace(Field(@exportRow, "view_email_url"), '"', '""'), '"')
-      SET @exportLine = Concat(@exportLine, ",", @exportCell)
-      SET @exportCell = Concat('"', Replace(@exportEmailHistory, '"', '""'), '"')
-      SET @exportLine = Concat(@exportLine, ",", @exportCell)
-      SET @exportCell = Concat('"', Replace(@exportCourseHistory, '"', '""'), '"')
-      SET @exportLine = Concat(@exportLine, ",", @exportCell)
-]%%%%=Concat(@exportLine, Char(10))=%%%%[
-    NEXT @exportRowIdx
-  NEXT @exportPageNum
-ENDIF
 ]%%
-%%[ IF @runCsvExport != "true" THEN ]%%
-
-
 <script runat="server">
 Platform.Load("core", "1");
 
@@ -3075,7 +3070,7 @@ if (action === "syncAutomation" && confirm === "1") {
                   <div class="chart-number">☉</div>
                   <div class="chart-content">
                       <div class="chart-text">Opens Over Time</div>
-                      <div class="chart-type">%%[ IF @BU == "Prod" THEN ]%%Opens, Clicks, Unsubscribes, and Unregistered Opens by Date%%[ ELSE ]%%Opens, Unsubscribes, and Unregistered Opens by Date%%[ ENDIF ]%%</div>
+                      <div class="chart-type">%%[ IF @BU == "PROD" THEN ]%%Opens, Clicks, Unsubscribes, and Unregistered Opens by Date%%[ ELSE ]%%Opens, Unsubscribes, and Unregistered Opens by Date%%[ ENDIF ]%%</div>
                   </div>
               </div>
                <div class="chart-wrapper">
@@ -3094,7 +3089,7 @@ if (action === "syncAutomation" && confirm === "1") {
                   <div class="analytics-description">
                      Opened: <strong>%%=v(@openedCount)=%%</strong> |
                      Bounced: <strong>%%=v(@bouncedCount)=%%</strong> |
-                     Did Not Open: <strong>%%=v(@didNotOpenCount)=%%</strong>%%[ IF @BU == "Prod" THEN ]%% |
+                     Did Not Open: <strong>%%=v(@didNotOpenCount)=%%</strong>%%[ IF @BU == "PROD" THEN ]%% |
                      Clicked: <strong>%%=v(@clickedCount)=%%</strong>%%[ ENDIF ]%% |
                      Unregistered Opens: <strong>%%=v(@unregisteredOpenedCount)=%%</strong>
                   </div>
@@ -3160,7 +3155,7 @@ if (action === "syncAutomation" && confirm === "1") {
                            <option value="Opened">Opened</option>
                            <option value="Bounced">Bounced</option>
                            <option value="Did Not Open">Did Not Open</option>
-                          %%[ IF @BU == "Prod" THEN ]%%<option value="Clicked">Clicked</option>%%[ ENDIF ]%%
+                          %%[ IF @BU == "PROD" THEN ]%%<option value="Clicked">Clicked</option>%%[ ENDIF ]%%
                          <option value="Unsubscribed">Unsubscribed</option>
                        </select>
                    </div>
@@ -3187,7 +3182,7 @@ if (action === "syncAutomation" && confirm === "1") {
                       Download
                   </button>
                    <button type="button" id="syncBtn" class="sync-btn" onclick="toggleSyncSection()" title="Sync automation" %%[ IF NOT Empty(@configError) OR EMPTY(@syncAutomationIdVar) THEN ]%%disabled style="opacity: 0.5; cursor: not-allowed;"%%[ ENDIF ]%%>↻</button>
-                  %%[IF @BU == "Prod" THEN]%% <button type="button" id="triggerBtn" class="trigger-btn" onclick="toggleTriggerSection()" title="Trigger automation" %%[ IF NOT Empty(@configError) THEN ]%%disabled style="opacity: 0.5; cursor: not-allowed;"%%[ ENDIF ]%%>⚡</button>%%[ENDIF]%%
+                  %%[IF @BU == "PROD" THEN]%% <button type="button" id="triggerBtn" class="trigger-btn" onclick="toggleTriggerSection()" title="Trigger automation" %%[ IF NOT Empty(@configError) THEN ]%%disabled style="opacity: 0.5; cursor: not-allowed;"%%[ ENDIF ]%%>⚡</button>%%[ENDIF]%%
                    <button type="button" id="addContactBtn" class="add-contact-btn" onclick="toggleAddContactSection()" title="Search Contact In %%=v(@BU)=%% Emails" %%[ IF NOT Empty(@configError) THEN ]%%disabled style="opacity: 0.5; cursor: not-allowed;"%%[ ENDIF ]%%>🔍</button>
               </div>
                <div id="triggerSection" class="trigger-section %%[ IF NOT Empty(@triggerAutomationStatus) THEN ]%% visible %%[ ENDIF ]%%">
@@ -3607,7 +3602,7 @@ if (action === "syncAutomation" && confirm === "1") {
                            pointHoverBackgroundColor: '#059669',
                            pointHoverBorderColor: '#ffffff',
                            pointHoverBorderWidth: 3
-                      }%%[ IF @BU == "Prod" THEN ]%%,
+                      }%%[ IF @BU == "PROD" THEN ]%%,
                        {
                           label: 'Clicks (' + clicksTotal + ')',
                            data: clicksData,
@@ -3972,7 +3967,7 @@ if (action === "syncAutomation" && confirm === "1") {
                            data: proportionalBounced,
                            backgroundColor: 'rgba(220, 38, 38, 0.8)',
                            borderWidth: 0
-                       }%%[ IF @BU == "Prod" THEN ]%%,
+                       }%%[ IF @BU == "PROD" THEN ]%%,
                        {
                            label: 'Clicked',
                            data: proportionalClicked,
@@ -3992,7 +3987,7 @@ if (action === "syncAutomation" && confirm === "1") {
                                    if (context[0].datasetIndex === 0) {
                                        return [
                                            'Did Not Open: ' + didNotOpen[i].toLocaleString(),
-                                           'Bounced: ' + bounced[i].toLocaleString()%%[ IF @BU == "Prod" THEN ]%%,
+                                           'Bounced: ' + bounced[i].toLocaleString()%%[ IF @BU == "PROD" THEN ]%%,
                                            'Clicked: ' + clicked[i].toLocaleString()%%[ ENDIF ]%%,
                                            'Total: ' + totals[i].toLocaleString()
                                        ];
@@ -4138,7 +4133,7 @@ if (action === "syncAutomation" && confirm === "1") {
                            data: proportionalBounced,
                            backgroundColor: 'rgba(220, 38, 38, 0.8)',
                            borderWidth: 0
-                       }%%[ IF @BU == "Prod" THEN ]%%,
+                       }%%[ IF @BU == "PROD" THEN ]%%,
                        {
                            label: 'Clicked',
                            data: proportionalClicked,
@@ -4158,7 +4153,7 @@ if (action === "syncAutomation" && confirm === "1") {
                                    if (context[0].datasetIndex === 0) {
                                        return [
                                            'Did Not Open: ' + didNotOpen[i].toLocaleString(),
-                                           'Bounced: ' + bounced[i].toLocaleString()%%[ IF @BU == "Prod" THEN ]%%,
+                                           'Bounced: ' + bounced[i].toLocaleString()%%[ IF @BU == "PROD" THEN ]%%,
                                            'Clicked: ' + clicked[i].toLocaleString()%%[ ENDIF ]%%,
                                            'Total: ' + totals[i].toLocaleString()
                                        ];
