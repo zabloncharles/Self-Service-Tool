@@ -1,0 +1,228 @@
+%%[
+SET @createRequested = RequestParameter("create")
+SET @deleteRequested = IIF(RequestParameter("deleteEmail") == "1","1","0")
+SET @deleteEmailId = Trim(RequestParameter("deleteEmailId"))
+SET @emailId = RequestParameter("emailId")
+SET @itemBaseName = Trim(RequestParameter("itemBaseName"))
+SET @emailSubjectLine = Trim(RequestParameter("emailSubjectLine"))
+SET @emailPreheader = Trim(RequestParameter("emailPreheader"))
+SET @emailBodyText = RequestParameter("emailBodyText")
+SET @bodySlotKey = Trim(RequestParameter("bodySlotKey"))
+SET @headerSlotKey = Trim(RequestParameter("headerSlotKey"))
+SET @buttonSlotKey = Trim(RequestParameter("buttonSlotKey"))
+SET @templateEmailName = Trim(RequestParameter("templateEmailName"))
+SET @emailHeadline = Trim(RequestParameter("emailHeadline"))
+SET @surveyId = Trim(RequestParameter("surveyId"))
+SET @emailRowId = Trim(RequestParameter("emailRowId"))
+SET @previewFlow = Trim(RequestParameter("previewFlow"))
+SET @signatureChoice = Trim(RequestParameter("signatureChoice"))
+SET @customSenderParam = Trim(RequestParameter("customSender"))
+SET @signatureSlotKey = Trim(RequestParameter("signatureSlotKey"))
+SET @signatureSlotBlockName = "sst_signature_slot"
+SET @showBookingLinkParam = "false"
+SET @verifyCustomSenderMode = "0"
+SET @verifyCustomSenderJson = ""
+IF RequestParameter("showBookingLink") == "1" OR Lowercase(Trim(RequestParameter("showBookingLink"))) == "true" OR Lowercase(Trim(RequestParameter("showBookingLink"))) == "on" THEN
+SET @showBookingLinkParam = "true"
+ENDIF
+IF NOT Empty(@signatureChoice) AND @signatureChoice != "none" THEN
+IF @signatureChoice != "standard" AND @signatureChoice != "dm" AND @signatureChoice != "custom_sender" THEN
+SET @signatureChoice = "none"
+SET @showBookingLinkParam = "false"
+SET @customSenderParam = ""
+ENDIF
+ENDIF
+IF @signatureChoice != "custom_sender" THEN
+SET @customSenderParam = ""
+ENDIF
+IF @signatureChoice == "none" OR Empty(@signatureChoice) THEN
+SET @showBookingLinkParam = "false"
+SET @customSenderParam = ""
+ENDIF
+SET @navHomeRow = LookupRows("bd_sst_page_navigation","type","cloudpage")
+IF RowCount(@navHomeRow) > 0 THEN
+    SET @navBackHome = Row(@navHomeRow,1)
+    SET @hubUrl = Field(@navBackHome,"ss_home")
+ENDIF
+SET @builderPageLabel = "Create Email"
+SET @buildFlow = Trim(RequestParameter("flow"))
+SET @qsJourneyId = Trim(RequestParameter("journeyId"))
+SET @qsEventKey = Trim(RequestParameter("eventKey"))
+SET @qsCampaignId = Trim(RequestParameter("campaignId"))
+SET @qsCampaignName = Trim(RequestParameter("campaignName"))
+SET @qsJourneyName = Trim(RequestParameter("journeyName"))
+SET @qsEmailName = Trim(RequestParameter("emailName"))
+SET @qsBccEmail = Trim(RequestParameter("bccEmail"))
+SET @qsSenderProfileId = Trim(RequestParameter("senderProfileId"))
+SET @qsSendClassificationId = Trim(RequestParameter("sendClassificationId"))
+SET @qsAddTaskActivity = Trim(RequestParameter("addTaskActivity"))
+SET @qsAddSTOActivity = Trim(RequestParameter("addSTOActivity"))
+SET @qsJourneyDescription = Trim(RequestParameter("journeyDescription"))
+SET @qsDeCustomerKey = Trim(RequestParameter("deCustomerKey"))
+SET @qsEntryDeName = Trim(RequestParameter("entryDeName"))
+SET @createEmailOnly = "1"
+SET @showForm = "true"
+IF @buildFlow == "quick_send" AND NOT Empty(@qsEmailName) AND Empty(@itemBaseName) THEN
+SET @itemBaseName = @qsEmailName
+ENDIF
+IF @buildFlow == "quick_send" AND NOT Empty(RequestParameter("emailSubjectLine")) AND Empty(@createRequested) THEN
+SET @emailSubjectLine = Trim(RequestParameter("emailSubjectLine"))
+ENDIF
+IF NOT Empty(@createRequested) OR @deleteRequested == "1" THEN
+SET @showForm = "false"
+ENDIF
+SET @resultText = ""
+SET @templateConfigOk = "false"
+SET @templateCount = 0
+SET @templateRows = LookupOrderedRows("bd_sst_email_templates",0,"email_id ASC","email_type","template")
+SET @templateCount = RowCount(@templateRows)
+IF @templateCount > 0 THEN
+SET @templateConfigOk = "true"
+SET @defaultEmailId = Trim(Field(Row(@templateRows,1),"email_id"))
+SET @emailIdLg = ""
+SET @emailIdSm = ""
+SET @emailIdNoBg = ""
+ELSE
+SET @templateRows = LookupRows("SFMC_TEMPLATES","User","Admin")
+IF RowCount(@templateRows) > 0 THEN
+SET @templateRow = Row(@templateRows,1)
+SET @emailIdLg = Trim(Field(@templateRow,"LG_BG_Header_Email_BD_Template"))
+SET @emailIdSm = Trim(Field(@templateRow,"SM_BG_Header_Email_BD_Template"))
+SET @emailIdNoBg = Trim(Field(@templateRow,"NO_BG_Header_Email_BD_Template"))
+IF NOT Empty(@emailIdLg) OR NOT Empty(@emailIdSm) OR NOT Empty(@emailIdNoBg) THEN
+  SET @templateConfigOk = "true"
+ENDIF
+SET @defaultEmailId = @emailIdLg
+IF Empty(@defaultEmailId) THEN
+SET @defaultEmailId = @emailIdSm
+ENDIF
+IF Empty(@defaultEmailId) THEN
+SET @defaultEmailId = @emailIdNoBg
+ENDIF
+ENDIF
+ENDIF
+IF Empty(@emailId) THEN
+SET @emailId = @defaultEmailId
+ENDIF
+IF Empty(@emailSubjectLine) THEN
+SET @emailSubjectLine = "Campaign Event"
+ENDIF
+IF Empty(@emailRowId) THEN
+SET @emailRowId = @emailId
+ENDIF
+IF @previewFlow == "1" AND NOT Empty(@emailRowId) AND (Empty(@bodySlotKey) OR Empty(@headerSlotKey) OR Empty(@buttonSlotKey) OR Empty(@signatureSlotKey) OR Empty(@templateEmailName)) THEN
+SET @slotKeyLookupRows = LookupRows("bd_sst_email_templates","email_id",@emailRowId)
+IF RowCount(@slotKeyLookupRows) > 0 THEN
+SET @slotKeyLookupRow = Row(@slotKeyLookupRows,1)
+IF Empty(@bodySlotKey) THEN
+SET @bodySlotKey = Trim(Field(@slotKeyLookupRow,"body_slot_key"))
+ENDIF
+IF Empty(@headerSlotKey) THEN
+SET @headerSlotKey = Trim(Field(@slotKeyLookupRow,"header_slot_key"))
+ENDIF
+IF Empty(@buttonSlotKey) THEN
+SET @buttonSlotKey = Trim(Field(@slotKeyLookupRow,"button_slot_key"))
+ENDIF
+IF Empty(@signatureSlotKey) THEN
+SET @signatureSlotKey = Trim(Field(@slotKeyLookupRow,"signature_slot_key"))
+ENDIF
+IF Empty(@templateEmailName) THEN
+SET @templateEmailName = Trim(Field(@slotKeyLookupRow,"email_name"))
+ENDIF
+ENDIF
+ENDIF
+SET @emailName = ""
+IF NOT Empty(@itemBaseName) THEN
+SET @slugName = Replace(@itemBaseName,'"','')
+SET @slugName = Replace(@slugName," | ","_")
+SET @slugName = Replace(@slugName,"|","_")
+SET @slugName = Replace(@slugName," ","_")
+SET @slugName = Replace(@slugName,".","_")
+SET @slugName = Replace(@slugName,"/","_")
+SET @emailName = @slugName
+ENDIF
+SET @authOk = "false"
+SET @step3bResult = ""
+IF @showForm != "true" THEN
+IF @deleteRequested == "1" THEN
+  SET @authRow = LookupRows("SFMC_AUTH","User","Admin")
+  SET @rowCount = RowCount(@authRow)
+  IF @rowCount > 0 THEN
+    SET @row = Row(@authRow,1)
+    SET @clientId = Field(@row,"clientId")
+    SET @clientSecret = Field(@row,"clientSecret")
+    SET @subdomain = Field(@row,"subdomain")
+    SET @sourceEmailId = @emailId
+    IF NOT Empty(@clientId) AND NOT Empty(@clientSecret) AND NOT Empty(@subdomain) THEN
+      SET @authUrl = Concat("https://",@subdomain,".auth.marketingcloudapis.com/v2/token")
+      SET @accountId = Trim(Field(@row,"accountId"))
+      SET @authPayload = Concat('{"grant_type":"client_credentials","client_id":"',@clientId,'","client_secret":"',@clientSecret,'"}')
+      IF NOT Empty(@accountId) THEN
+        SET @authPayload = Concat(@authPayload,',"account_id":"',@accountId,'"')
+      ENDIF
+      SET @authPayload = Concat(@authPayload,'}')
+      SET @authStatus = HTTPPost2(@authUrl,"application/json",@authPayload,false,@authResponse,@authResponseHeader)
+      IF @authStatus == 200 THEN
+        SET @tokenPattern = '"access_token":"([^"]+)"'
+        SET @accessToken = RegExMatch(@authResponse,@tokenPattern,1)
+        IF NOT Empty(@accessToken) THEN
+          SET @resultText = Concat("Step 1 OK. Step 2 OK - Auth success.")
+          SET @authOk = "true"
+          SET @newEmailId = @deleteEmailId
+        ELSE
+          SET @resultText = "Step 2 FAILED: No access token."
+        ENDIF
+      ELSE
+        SET @resultText = Concat("Step 2 FAILED: Auth HTTP ",@authStatus," - ",@authResponse)
+      ENDIF
+    ELSE
+      SET @resultText = "Step 1 FAILED: Missing clientId, clientSecret, or subdomain in SFMC_AUTH."
+    ENDIF
+  ELSE
+    SET @resultText = "Step 1 FAILED: No SFMC_AUTH row for User=Admin."
+  ENDIF
+ELSE
+  IF @templateConfigOk != "true" THEN
+    SET @resultText = "Step 0 FAILED: Missing email templates in bd_sst_email_templates (email_type=template) or SFMC_TEMPLATES."
+  ELSEIF Empty(@itemBaseName) THEN
+    SET @resultText = "Enter a Name for the email asset."
+  ELSE
+    SET @authRow = LookupRows("SFMC_AUTH","User","Admin")
+    SET @rowCount = RowCount(@authRow)
+    IF @rowCount > 0 THEN
+      SET @row = Row(@authRow,1)
+      SET @clientId = Field(@row,"clientId")
+      SET @clientSecret = Field(@row,"clientSecret")
+      SET @subdomain = Field(@row,"subdomain")
+      SET @sourceEmailId = @emailId
+      IF NOT Empty(@clientId) AND NOT Empty(@clientSecret) AND NOT Empty(@subdomain) THEN
+        SET @authUrl = Concat("https://",@subdomain,".auth.marketingcloudapis.com/v2/token")
+        SET @accountId = Trim(Field(@row,"accountId"))
+        SET @authPayload = Concat('{"grant_type":"client_credentials","client_id":"',@clientId,'","client_secret":"',@clientSecret,'"}')
+        IF NOT Empty(@accountId) THEN
+          SET @authPayload = Concat(@authPayload,',"account_id":"',@accountId,'"')
+        ENDIF
+        SET @authPayload = Concat(@authPayload,'}')
+        SET @authStatus = HTTPPost2(@authUrl,"application/json",@authPayload,false,@authResponse,@authResponseHeader)
+        IF @authStatus == 200 THEN
+          SET @tokenPattern = '"access_token":"([^"]+)"'
+          SET @accessToken = RegExMatch(@authResponse,@tokenPattern,1)
+          IF NOT Empty(@accessToken) THEN
+            SET @resultText = Concat("Step 1 OK. Step 2 OK - Auth success.")
+            SET @authOk = "true"
+          ELSE
+            SET @resultText = "Step 2 FAILED: No access token."
+          ENDIF
+        ELSE
+          SET @resultText = Concat("Step 2 FAILED: Auth HTTP ",@authStatus," - ",@authResponse)
+        ENDIF
+      ELSE
+        SET @resultText = "Step 1 FAILED: Missing clientId, clientSecret, or subdomain in SFMC_AUTH."
+      ENDIF
+    ELSE
+      SET @resultText = "Step 1 FAILED: No SFMC_AUTH row for User=Admin."
+    ENDIF
+  ENDIF
+ENDIF
+ENDIF
+]%%

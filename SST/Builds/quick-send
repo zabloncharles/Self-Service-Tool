@@ -1,0 +1,245 @@
+%%[
+SET @createRequested = RequestParameter("create")
+SET @deleteRequested = IIF(RequestParameter("deleteEmail") == "1","1","0")
+SET @deleteEmailId = Trim(RequestParameter("deleteEmailId"))
+SET @campaignId = Trim(RequestParameter("campaignId"))
+SET @verifyCampaignRequested = IIF(RequestParameter("verifyCampaign") == "1","1","0")
+SET @emailId = RequestParameter("emailId")
+SET @emailSourceMode = Trim(RequestParameter("emailSourceMode"))
+SET @existingEmailId = Trim(RequestParameter("existingEmailId"))
+IF Empty(@emailSourceMode) OR (@emailSourceMode != "existing" AND @emailSourceMode != "template") THEN
+  SET @emailSourceMode = "template"
+ENDIF
+SET @addTaskActivity = "1"
+SET @addSTOActivity = "0"
+IF NOT Empty(@createRequested) OR @verifyCampaignRequested == "1" OR NOT Empty(RequestParameter("addTaskActivity")) OR NOT Empty(RequestParameter("addSTOActivity")) THEN
+  SET @addTaskActivity = IIF(RequestParameter("addTaskActivity") == "1","1","0")
+  SET @addSTOActivity = IIF(RequestParameter("addSTOActivity") == "1","1","0")
+ENDIF
+SET @flow = "sbu"
+SET @hubUrl = ""
+SET @buildDetailUrl = ""
+SET @navRows = LookupRows("bd_sst_page_navigation","type","cloudpage")
+IF RowCount(@navRows) > 0 THEN
+  SET @navRow = Row(@navRows,1)
+  SET @hubUrl = Field(@navRow,"ss_home")
+  SET @buildDetailUrl = Field(@navRow,"ss_edit")
+ENDIF
+SET @builderPageLabel = "Quick Send"
+SET @itemBaseName = Trim(RequestParameter("itemBaseName"))
+SET @emailSubjectLine = Trim(RequestParameter("emailSubjectLine"))
+SET @journeyDescription = Trim(RequestParameter("journeyDescription"))
+SET @bccEmail = Trim(RequestParameter("bccEmail"))
+SET @senderProfileId = Trim(RequestParameter("senderProfileId"))
+SET @sendClassificationId = Trim(RequestParameter("sendClassificationId"))
+SET @showForm = "true"
+IF NOT Empty(@createRequested) AND @verifyCampaignRequested != "1" THEN
+  SET @showForm = "false"
+ENDIF
+IF @deleteRequested == "1" THEN
+  SET @showForm = "false"
+ENDIF
+SET @resultText = ""
+SET @journeyName = ""
+SET @eventName = ""
+SET @eventDefId = ""
+SET @deCustomerKey = ""
+SET @entryDeName = ""
+SET @journeyId = ""
+SET @templateConfigOk = "false"
+SET @templateCount = 0
+SET @defaultEmailId = ""
+SET @templateRows = LookupOrderedRows("bd_sst_email_templates",0,"email_id ASC","email_type","template")
+SET @templateCount = RowCount(@templateRows)
+IF @templateCount > 0 THEN
+  SET @templateConfigOk = "true"
+  SET @defaultEmailId = Trim(Field(Row(@templateRows,@templateCount),"email_id"))
+ENDIF
+IF Empty(@campaignId) OR Length(@campaignId) < 15 THEN
+  SET @createEmailOnly = "1"
+ELSE
+  SET @createEmailOnly = "0"
+ENDIF
+IF @createEmailOnly == "1" THEN
+  SET @dateStr = Concat(Format(Now(),"yyyy"),"_",Format(Now(),"MM"),"_",Format(Now(),"dd"))
+  SET @eventName = Concat("Email_Auto_Created_",@dateStr)
+  SET @journeyName = ""
+  SET @emailName = Concat(@eventName,"_Email")
+  SET @campaignName = ""
+  IF Empty(@emailId) THEN
+    SET @emailId = @defaultEmailId
+  ENDIF
+ELSE
+  IF Empty(@emailId) THEN
+    SET @emailId = @defaultEmailId
+  ENDIF
+  SET @campaignLookup = RetrieveSalesforceObjects("Campaign","Id,Name","Id","=",@campaignId)
+  IF RowCount(@campaignLookup) > 0 THEN
+    SET @campaignRow = Row(@campaignLookup,1)
+    SET @campaignName = Field(@campaignRow,"Name")
+  ENDIF
+  IF Empty(@campaignName) THEN
+    SET @campaignName = Concat("Campaign-",@campaignId)
+  ENDIF
+  IF NOT Empty(@itemBaseName) THEN
+    SET @slugName = Replace(@itemBaseName,'"','')
+    SET @slugName = Replace(@slugName," | ","_")
+    SET @slugName = Replace(@slugName,"|","_")
+    SET @slugName = Replace(@slugName," ","_")
+    SET @slugName = Replace(@slugName,".","_")
+    SET @slugName = Replace(@slugName,"/","_")
+    SET @journeyName = @itemBaseName
+    SET @emailName = @slugName
+    SET @eventName = Concat(@slugName,"_EntryEvent")
+  ELSE
+    SET @campaignNameSafe = Replace(@campaignName,'"','')
+    SET @campaignNameSafe = Replace(@campaignNameSafe," | ","_")
+    SET @campaignNameSafe = Replace(@campaignNameSafe," ","_")
+    SET @campaignNameSafe = Replace(@campaignNameSafe,"|","_")
+    SET @dateStr = Concat(Format(Now(),"yyyy"),"_",Format(Now(),"MM"),"_",Format(Now(),"dd"))
+    SET @eventName = Concat(@campaignNameSafe,"_Auto_Created_",@dateStr)
+    SET @journeyName = Concat(@campaignNameSafe,"_Auto_Created_",@dateStr)
+    SET @emailName = Concat(@eventName,"_Email")
+  ENDIF
+ENDIF
+IF Empty(@emailSubjectLine) THEN
+  SET @emailSubjectLine = "Campaign Event"
+ENDIF
+SET @campaignVerifyShow = "0"
+SET @campaignVerifyStatus = ""
+SET @campaignVerifyMessage = ""
+SET @campaignVerifyListHtml = ""
+IF @verifyCampaignRequested == "1" THEN
+  SET @campaignVerifyShow = "1"
+  IF Empty(@campaignId) OR Length(@campaignId) < 15 THEN
+   SET @campaignVerifyStatus = "invalid"
+   SET @campaignVerifyMessage = "Enter a valid Salesforce Campaign ID (15 or 18 characters)."
+  ELSE
+   SET @campaignVerifyKey = Substring(@campaignId, 1, 18)
+   SET @campaignUsageRows = LookupRows("Bd_journey_analytics", "campaignId", @campaignVerifyKey)
+   SET @campaignUsageCount = RowCount(@campaignUsageRows)
+   IF @campaignUsageCount == 0 THEN
+    SET @campaignVerifyStatus = "clear"
+    SET @campaignVerifyMessage = "No other build uses this campaign."
+   ELSE
+    SET @campaignVerifyStatus = "used"
+    SET @campaignVerifyMessage = Concat("This campaign is already used by ", @campaignUsageCount, IIF(@campaignUsageCount == 1, " build:", " builds:"))
+    FOR @cvi = 1 TO @campaignUsageCount DO
+     SET @cvRow = Row(@campaignUsageRows, @cvi)
+     SET @cvJourneyId = Trim(Field(@cvRow, "journeyId"))
+     SET @cvJourneyName = Trim(Field(@cvRow, "journeyName"))
+     SET @cvJourneyType = Trim(Field(@cvRow, "journeyType"))
+     SET @cvBuildName = Trim(Field(@cvRow, "buildName"))
+     SET @cvLabel = @cvJourneyName
+     IF NOT Empty(@cvBuildName) THEN
+      SET @cvLabel = @cvBuildName
+     ENDIF
+     IF Empty(@cvLabel) THEN
+      SET @cvLabel = @cvJourneyId
+     ENDIF
+     SET @cvLine = Concat("<li><strong>", @cvLabel, "</strong>")
+     IF NOT Empty(@cvJourneyType) THEN
+      SET @cvLine = Concat(@cvLine, " (", @cvJourneyType, ")")
+     ENDIF
+     IF NOT Empty(@buildDetailUrl) AND NOT Empty(@cvJourneyId) THEN
+      SET @cvLine = Concat(@cvLine, ' — <a href="', @buildDetailUrl, '?journeyId=', @cvJourneyId, '">Open build</a>')
+     ENDIF
+     SET @cvLine = Concat(@cvLine, "</li>")
+     SET @campaignVerifyListHtml = Concat(@campaignVerifyListHtml, @cvLine)
+    NEXT @cvi
+   ENDIF
+  ENDIF
+ENDIF
+SET @authOk = "false"
+SET @step3bResult = ""
+IF @showForm != "true" THEN
+  IF @deleteRequested == "1" THEN
+    SET @authRow = LookupRows("SFMC_AUTH","User","Admin")
+    SET @rowCount = RowCount(@authRow)
+    IF @rowCount > 0 THEN
+      SET @row = Row(@authRow,1)
+      SET @clientId = Field(@row,"clientId")
+      SET @clientSecret = Field(@row,"clientSecret")
+      SET @subdomain = Field(@row,"subdomain")
+      SET @sourceEmailId = @emailId
+      IF NOT Empty(@clientId) AND NOT Empty(@clientSecret) AND NOT Empty(@subdomain) THEN
+        SET @authUrl = Concat("https://",@subdomain,".auth.marketingcloudapis.com/v2/token")
+        SET @accountId = Trim(Field(@row,"accountId"))
+        SET @authPayload = Concat('{"grant_type":"client_credentials","client_id":"',@clientId,'","client_secret":"',@clientSecret,'"}')
+        IF NOT Empty(@accountId) THEN
+          SET @authPayload = Concat(@authPayload,',"account_id":"',@accountId,'"')
+        ENDIF
+        SET @authPayload = Concat(@authPayload,'}')
+        SET @authStatus = HTTPPost2(@authUrl,"application/json",@authPayload,false,@authResponse,@authResponseHeader)
+        IF @authStatus == 200 THEN
+          SET @tokenPattern = '"access_token":"([^"]+)"'
+          SET @accessToken = RegExMatch(@authResponse,@tokenPattern,1)
+          IF NOT Empty(@accessToken) THEN
+            SET @resultText = Concat("Step 1 OK. Step 2 OK - Auth success.")
+            SET @authOk = "true"
+            SET @newEmailId = @deleteEmailId
+          ELSE
+            SET @resultText = "Step 2 FAILED: No access token."
+          ENDIF
+        ELSE
+          SET @resultText = Concat("Step 2 FAILED: Auth HTTP ",@authStatus," - ",@authResponse)
+        ENDIF
+      ELSE
+        SET @resultText = "Step 1 FAILED: Missing clientId, clientSecret, or subdomain in SFMC_AUTH."
+      ENDIF
+    ELSE
+      SET @resultText = "Step 1 FAILED: No SFMC_AUTH row for User=Admin."
+    ENDIF
+  ELSE
+    IF @templateConfigOk != "true" THEN
+      SET @resultText = "Step 0 FAILED: Missing email templates in bd_sst_email_templates (email_type=template)."
+    ELSE
+     IF @emailSourceMode == "existing" AND Empty(@existingEmailId) THEN
+       SET @resultText = "Enter the existing email name or Content Builder asset ID."
+     ELSEIF @createEmailOnly != "1" AND Empty(@itemBaseName) THEN
+       SET @resultText = "Enter a Name. It drives the email asset name, entry event / DE name, and journey title."
+     ELSE
+      SET @authRow = LookupRows("SFMC_AUTH","User","Admin")
+      SET @rowCount = RowCount(@authRow)
+      IF @rowCount > 0 THEN
+        SET @row = Row(@authRow,1)
+        SET @clientId = Field(@row,"clientId")
+        SET @clientSecret = Field(@row,"clientSecret")
+        SET @subdomain = Field(@row,"subdomain")
+        IF @emailSourceMode == "existing" THEN
+          SET @sourceEmailId = @existingEmailId
+        ELSE
+          SET @sourceEmailId = @emailId
+        ENDIF
+        IF NOT Empty(@clientId) AND NOT Empty(@clientSecret) AND NOT Empty(@subdomain) THEN
+          SET @authUrl = Concat("https://",@subdomain,".auth.marketingcloudapis.com/v2/token")
+          SET @accountId = Trim(Field(@row,"accountId"))
+          SET @authPayload = Concat('{"grant_type":"client_credentials","client_id":"',@clientId,'","client_secret":"',@clientSecret,'"}')
+          IF NOT Empty(@accountId) THEN
+            SET @authPayload = Concat(@authPayload,',"account_id":"',@accountId,'"')
+          ENDIF
+          SET @authPayload = Concat(@authPayload,'}')
+          SET @authStatus = HTTPPost2(@authUrl,"application/json",@authPayload,false,@authResponse,@authResponseHeader)
+          IF @authStatus == 200 THEN
+            SET @tokenPattern = '"access_token":"([^"]+)"'
+            SET @accessToken = RegExMatch(@authResponse,@tokenPattern,1)
+            IF NOT Empty(@accessToken) THEN
+              SET @resultText = Concat("Step 1 OK. Step 2 OK - Auth success.")
+              SET @authOk = "true"
+            ELSE
+              SET @resultText = "Step 2 FAILED: No access token."
+            ENDIF
+          ELSE
+            SET @resultText = Concat("Step 2 FAILED: Auth HTTP ",@authStatus," - ",@authResponse)
+          ENDIF
+        ELSE
+          SET @resultText = "Step 1 FAILED: Missing clientId, clientSecret, or subdomain in SFMC_AUTH."
+        ENDIF
+      ELSE
+        SET @resultText = "Step 1 FAILED: No SFMC_AUTH row for User=Admin."
+      ENDIF
+     ENDIF
+    ENDIF
+  ENDIF
+ENDIF
+]%%
